@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from transformers import BertTokenizer
 from fastapi import FastAPI
+from pydantic import BaseModel
 import uvicorn
 import math
 
@@ -107,8 +108,12 @@ def load_model(model, path="transformer_model.pth"):
     model.eval()  # Set the model to evaluation mode
     print(f"Model loaded from {path}")
 
-# Create and initialize the FastAPI app
+# FastAPI app initialization
 app = FastAPI()
+
+# Input schema for the request body
+class TextInput(BaseModel):
+    input_text: str
 
 # Load the model and tokenizer
 model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
@@ -121,21 +126,39 @@ load_model(model, path="transformer_model.pth")
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
+# FastAPI endpoint for text prediction with error handling
 @app.post("/predict/")
-async def predict_text(input_text: str):
-    # Tokenize the input text
-    inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
-    input_ids = inputs['input_ids']
+async def predict_text(input: TextInput):
+    try:
+        # Extract input_text from request body
+        input_text = input.input_text
 
-    # Make a prediction
-    with torch.no_grad():
-        outputs = model(input_ids)
-        predicted_token_id = torch.argmax(outputs, dim=-1).item()
+        # Tokenize and make predictions
+        inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
+        input_ids = inputs['input_ids']
 
-    # Convert the predicted token ID back to a word
-    predicted_word = tokenizer.decode(predicted_token_id)
+        # Debugging: Check shapes
+        print(f"Input IDs shape: {input_ids.shape}")
 
-    return {"input": input_text, "prediction": predicted_word}
+        with torch.no_grad():
+            outputs = model(input_ids)
+            
+            # Get predictions for each token in the sequence
+            predicted_token_ids = torch.argmax(outputs, dim=-1)
+
+            # Get the first predicted token ID (for simplicity)
+            first_predicted_token_id = predicted_token_ids[0, 0].item()
+
+        # Decode the predicted token ID into a word
+        predicted_word = tokenizer.decode(first_predicted_token_id)
+
+        return {"input": input_text, "prediction": predicted_word}
+    
+    except Exception as e:
+        # Log the error and return the message
+        print(f"Error during prediction: {e}")
+        return {"error": str(e)}
+
 
 # Run the FastAPI server
 if __name__ == "__main__":
