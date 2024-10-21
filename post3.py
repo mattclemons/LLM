@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from transformers import BertTokenizer
-import matplotlib.pyplot as plt
+import math
 
-# Assuming the Transformer model from Post 2
+# Transformer model definition
 class Transformer(nn.Module):
     def __init__(self, embed_size, heads, depth, forward_expansion, max_len, dropout, vocab_size):
         super(Transformer, self).__init__()
@@ -25,6 +25,7 @@ class Transformer(nn.Module):
         out = self.fc_out(x)
         return out
 
+# Transformer block definition
 class TransformerBlock(nn.Module):
     def __init__(self, embed_size, heads, forward_expansion, dropout):
         super(TransformerBlock, self).__init__()
@@ -41,6 +42,7 @@ class TransformerBlock(nn.Module):
         out = self.norm2(forward + x)
         return out
 
+# Multi-head self-attention
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, embed_size, heads):
         super(MultiHeadSelfAttention, self).__init__()
@@ -67,6 +69,7 @@ class MultiHeadSelfAttention(nn.Module):
         out = self.fc_out(out)
         return out
 
+# Feedforward layer
 class FeedForward(nn.Module):
     def __init__(self, embed_size, forward_expansion):
         super(FeedForward, self).__init__()
@@ -77,6 +80,7 @@ class FeedForward(nn.Module):
         x = torch.relu(self.fc1(x))
         return self.fc2(x)
 
+# Positional encoding
 class SimplePositionalEncoding(nn.Module):
     def __init__(self, embed_size, max_len):
         super(SimplePositionalEncoding, self).__init__()
@@ -98,11 +102,23 @@ inputs = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True
 input_ids = inputs['input_ids']
 attention_mask = inputs['attention_mask']
 
-# Target sequence for training (random example for simplicity)
-target_ids = torch.tensor([[101, 2023, 2003, 1037, 3944, 102], [101, 2057, 2024, 1037, 2037, 102]])
+# Debug: Ensure input shapes are as expected
+print(f"Input IDs shape: {input_ids.shape}")
+print(f"Attention Mask shape: {attention_mask.shape}")
+
+# Target sequence for training (dummy example for simplicity)
+# Updated target_ids to match the sequence length of input_ids (which is 12)
+target_ids = torch.tensor([[101, 2023, 2003, 1037, 3944, 2000, 2026, 2154, 102, 0, 0, 0],
+                           [101, 2057, 2024, 1037, 2037, 2154, 102, 0, 0, 0, 0, 0]])
+
+# Debug: Ensure target shapes are as expected
+print(f"Target IDs shape: {target_ids.shape}")
+
+# Create the Transformer model
+model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
 
 # Define the optimizer and loss function
-optimizer = optim.Adam(Transformer.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_fn = torch.nn.CrossEntropyLoss()
 
 # Training loop
@@ -111,55 +127,30 @@ def train(model, input_ids, target_ids, attention_mask, epochs=10):
     
     for epoch in range(epochs):
         optimizer.zero_grad()
+
+        # Forward pass: Get model predictions
         outputs = model(input_ids)
-        outputs = outputs.view(-1, outputs.size(-1))
-        target_ids = target_ids.view(-1)
+
+        # Debug: Check the shape of outputs
+        print(f"Model Outputs shape: {outputs.shape}")
+
+        # Reshape outputs and target_ids to match for the loss function
+        outputs = outputs.view(-1, outputs.size(-1))  # Flatten to (batch_size * seq_length, vocab_size)
+        target_ids = target_ids.view(-1)  # Flatten to (batch_size * seq_length)
+
+        # Debug: Check the shape after flattening
+        print(f"Flattened Outputs shape: {outputs.shape}")
+        print(f"Flattened Target IDs shape: {target_ids.shape}")
+
+        # Compute loss
         loss = loss_fn(outputs, target_ids)
+
+        # Backpropagation and optimization
         loss.backward()
         optimizer.step()
 
         print(f"Epoch {epoch + 1}, Loss: {loss.item()}")
 
-# Example of training
-model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
+# Run the training process
 train(model, input_ids, target_ids, attention_mask)
-
-# Monitoring loss during training with plot
-def train_with_monitoring(model, input_ids, target_ids, attention_mask, epochs=10):
-    model.train()
-    loss_values = []
-
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        outputs = model(input_ids)
-        outputs = outputs.view(-1, outputs.size(-1))
-        target_ids = target_ids.view(-1)
-        loss = loss_fn(outputs, target_ids)
-        loss.backward()
-        optimizer.step()
-
-        loss_values.append(loss.item())
-        print(f"Epoch {epoch + 1}, Loss: {loss.item()}")
-
-    plt.plot(range(1, epochs + 1), loss_values, label="Training Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
-
-# Run training with monitoring
-train_with_monitoring(model, input_ids, target_ids, attention_mask)
-
-# Evaluation function
-def evaluate(model, input_ids, target_ids, attention_mask):
-    model.eval()
-    with torch.no_grad():
-        outputs = model(input_ids)
-        outputs = outputs.view(-1, outputs.size(-1))
-        target_ids = target_ids.view(-1)
-        loss = loss_fn(outputs, target_ids)
-        print(f"Evaluation Loss: {loss.item()}")
-
-# Example of evaluation
-evaluate(model, input_ids, target_ids, attention_mask)
 

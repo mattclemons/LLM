@@ -4,8 +4,9 @@ import torch.optim as optim
 from transformers import BertTokenizer
 from fastapi import FastAPI
 import uvicorn
+import math
 
-# Assuming the Transformer model from Post 2
+# Transformer model definition
 class Transformer(nn.Module):
     def __init__(self, embed_size, heads, depth, forward_expansion, max_len, dropout, vocab_size):
         super(Transformer, self).__init__()
@@ -26,6 +27,22 @@ class Transformer(nn.Module):
         out = self.fc_out(x)
         return out
 
+# Positional Encoding
+class SimplePositionalEncoding(nn.Module):
+    def __init__(self, embed_size, max_len):
+        super(SimplePositionalEncoding, self).__init__()
+        self.encoding = torch.zeros(max_len, embed_size)
+
+        for pos in range(max_len):
+            for i in range(0, embed_size, 2):
+                self.encoding[pos, i] = math.sin(pos / (10000 ** (2 * i / embed_size)))
+                self.encoding[pos, i + 1] = math.cos(pos / (10000 ** (2 * i / embed_size)))
+
+    def forward(self, x):
+        seq_len = x.size(1)
+        return x + self.encoding[:seq_len, :]
+
+# Transformer block definition
 class TransformerBlock(nn.Module):
     def __init__(self, embed_size, heads, forward_expansion, dropout):
         super(TransformerBlock, self).__init__()
@@ -42,6 +59,7 @@ class TransformerBlock(nn.Module):
         out = self.norm2(forward + x)
         return out
 
+# Multi-head self-attention
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, embed_size, heads):
         super(MultiHeadSelfAttention, self).__init__()
@@ -68,6 +86,7 @@ class MultiHeadSelfAttention(nn.Module):
         out = self.fc_out(out)
         return out
 
+# Feedforward layer
 class FeedForward(nn.Module):
     def __init__(self, embed_size, forward_expansion):
         super(FeedForward, self).__init__()
@@ -78,27 +97,13 @@ class FeedForward(nn.Module):
         x = torch.relu(self.fc1(x))
         return self.fc2(x)
 
-class SimplePositionalEncoding(nn.Module):
-    def __init__(self, embed_size, max_len):
-        super(SimplePositionalEncoding, self).__init__()
-        self.encoding = torch.zeros(max_len, embed_size)
-
-        for pos in range(max_len):
-            for i in range(0, embed_size, 2):
-                self.encoding[pos, i] = math.sin(pos / (10000 ** (2 * i / embed_size)))
-                self.encoding[pos, i + 1] = math.cos(pos / (10000 ** (2 * i / embed_size)))
-
-    def forward(self, x):
-        seq_len = x.size(1)
-        return x + self.encoding[:seq_len, :]
-
 # Save and load model functions
 def save_model(model, path="transformer_model.pth"):
     torch.save(model.state_dict(), path)
     print(f"Model saved to {path}")
 
 def load_model(model, path="transformer_model.pth"):
-    model.load_state_dict(torch.load(path))
+    model.load_state_dict(torch.load(path, map_location=torch.device('cpu')))  # Ensure the path is correct
     model.eval()  # Set the model to evaluation mode
     print(f"Model loaded from {path}")
 
@@ -107,7 +112,13 @@ app = FastAPI()
 
 # Load the model and tokenizer
 model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
-load_model(model)  # Load the model from file
+
+# Save the model first (if not already saved from previous training)
+save_model(model, path="transformer_model.pth")
+
+# Load the model (this will work now since the model has been saved)
+load_model(model, path="transformer_model.pth")
+
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 @app.post("/predict/")

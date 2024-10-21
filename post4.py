@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 from transformers import BertTokenizer
 import matplotlib.pyplot as plt
+import math
 
-# Assuming the Transformer model from Post 2
+# Transformer model definition
 class Transformer(nn.Module):
     def __init__(self, embed_size, heads, depth, forward_expansion, max_len, dropout, vocab_size):
         super(Transformer, self).__init__()
@@ -25,6 +26,7 @@ class Transformer(nn.Module):
         out = self.fc_out(x)
         return out
 
+# Transformer block definition
 class TransformerBlock(nn.Module):
     def __init__(self, embed_size, heads, forward_expansion, dropout):
         super(TransformerBlock, self).__init__()
@@ -41,6 +43,7 @@ class TransformerBlock(nn.Module):
         out = self.norm2(forward + x)
         return out
 
+# Multi-head self-attention
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, embed_size, heads):
         super(MultiHeadSelfAttention, self).__init__()
@@ -67,6 +70,7 @@ class MultiHeadSelfAttention(nn.Module):
         out = self.fc_out(out)
         return out
 
+# Feedforward layer
 class FeedForward(nn.Module):
     def __init__(self, embed_size, forward_expansion):
         super(FeedForward, self).__init__()
@@ -77,6 +81,7 @@ class FeedForward(nn.Module):
         x = torch.relu(self.fc1(x))
         return self.fc2(x)
 
+# Positional encoding
 class SimplePositionalEncoding(nn.Module):
     def __init__(self, embed_size, max_len):
         super(SimplePositionalEncoding, self).__init__()
@@ -98,12 +103,41 @@ inputs = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True
 input_ids = inputs['input_ids']
 attention_mask = inputs['attention_mask']
 
-# Target sequence for training (random example for simplicity)
-target_ids = torch.tensor([[101, 2023, 2003, 1037, 3944, 102], [101, 2057, 2024, 1037, 2037, 102]])
+# Target sequence for training (dummy example for simplicity)
+target_ids = torch.tensor([[101, 2023, 2003, 1037, 3944, 2000, 2026, 2154, 102, 0, 0, 0],
+                           [101, 2057, 2024, 1037, 2037, 2154, 102, 0, 0, 0, 0, 0]])
 
-# Define the optimizer and loss function
-optimizer = optim.Adam(Transformer.parameters(), lr=0.001)
+# Debug: Ensure target shapes are as expected
+print(f"Target IDs shape: {target_ids.shape}")
+
+# Create the Transformer model instance
+model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
+
+# Define the optimizer and loss function using the instantiated model
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_fn = torch.nn.CrossEntropyLoss()
+
+# Fine-tuning function
+def fine_tune(model, input_ids, target_ids, attention_mask, epochs=5):
+    optimizer = optim.Adam(model.parameters(), lr=1e-5)  # Lower learning rate for fine-tuning
+    model.train()
+
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        outputs = model(input_ids)
+
+        # Flatten outputs and target_ids to match the loss function
+        outputs = outputs.view(-1, outputs.size(-1))
+        target_ids = target_ids.view(-1)
+
+        loss = loss_fn(outputs, target_ids)
+        loss.backward()
+        optimizer.step()
+
+        print(f"Fine-tuning Epoch {epoch + 1}, Loss: {loss.item()}")
+
+# Fine-tuning example
+fine_tune(model, input_ids, target_ids, attention_mask)
 
 # Evaluation function with accuracy
 def evaluate_with_accuracy(model, input_ids, target_ids, attention_mask):
@@ -128,66 +162,5 @@ def evaluate_with_accuracy(model, input_ids, target_ids, attention_mask):
     print(f"Evaluation Accuracy: {accuracy * 100:.2f}%")
 
 # Example of evaluation with accuracy
-model = Transformer(embed_size=256, heads=8, depth=4, forward_expansion=4, max_len=50, dropout=0.1, vocab_size=30522)
 evaluate_with_accuracy(model, input_ids, target_ids, attention_mask)
-
-# Fine-tuning the model
-def fine_tune(model, input_ids, target_ids, attention_mask, epochs=5):
-    optimizer = optim.Adam(model.parameters(), lr=1e-5)  # Lower learning rate for fine-tuning
-    model.train()
-
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        outputs = model(input_ids)
-        outputs = outputs.view(-1, outputs.size(-1))
-        target_ids = target_ids.view(-1)
-
-        loss = loss_fn(outputs, target_ids)
-        loss.backward()
-        optimizer.step()
-
-        print(f"Fine-tuning Epoch {epoch + 1}, Loss: {loss.item()}")
-
-# Fine-tuning example
-fine_tune(model, input_ids, target_ids, attention_mask)
-
-# Monitoring loss and accuracy during evaluation
-def evaluate_and_plot(model, input_ids, target_ids, attention_mask):
-    model.eval()
-    total_loss = 0
-    correct_predictions = 0
-    total_predictions = 0
-
-    with torch.no_grad():
-        outputs = model(input_ids)
-        outputs = outputs.view(-1, outputs.size(-1))
-        target_ids = target_ids.view(-1)
-        loss = loss_fn(outputs, target_ids)
-        total_loss += loss.item()
-
-        predictions = torch.argmax(outputs, dim=1)
-        correct_predictions += (predictions == target_ids).sum().item()
-        total_predictions += target_ids.size(0)
-
-    accuracy = correct_predictions / total_predictions
-
-    # Plot loss and accuracy
-    plt.figure(figsize=(10, 5))
-
-    plt.subplot(1, 2, 1)
-    plt.title("Evaluation Loss")
-    plt.plot([total_loss], 'r-')
-    plt.xlabel("Evaluation")
-    plt.ylabel("Loss")
-
-    plt.subplot(1, 2, 2)
-    plt.title("Evaluation Accuracy")
-    plt.plot([accuracy * 100], 'g-')
-    plt.xlabel("Evaluation")
-    plt.ylabel("Accuracy (%)")
-
-    plt.show()
-
-# Run evaluation and plot
-evaluate_and_plot(model, input_ids, target_ids, attention_mask)
 
